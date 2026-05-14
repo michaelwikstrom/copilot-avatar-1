@@ -1918,6 +1918,7 @@ window.setTts = (enabled) => {
 };
 
 window.getTts = () => ttsEnabled;
+window.speak = (text) => speak(text);
 
 window.getVoices = () => {
     const voices = speechSynthesis.getVoices();
