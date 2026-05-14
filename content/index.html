@@ -32,7 +32,7 @@
       <label>Engine
         <select id="tts-engine-select">
           <option value="webspeech">Web Speech</option>
-          <option value="voxtral">Voxtral (local)</option>
+          <option value="voxtral">Voxtral</option>
         </select>
       </label>
 
@@ -56,6 +56,9 @@
             <input id="voxtral-url-input" type="text" value="http://localhost:18000" />
             <button id="voxtral-refresh-btn" title="Fetch voices from server">↻</button>
           </div>
+        </label>
+        <label>API Key <span class="tts-hint">(leave blank for local)</span>
+          <input id="voxtral-apikey-input" type="password" placeholder="sk-..." autocomplete="off" />
         </label>
         <label>Voice source
           <div class="tts-radio-group">

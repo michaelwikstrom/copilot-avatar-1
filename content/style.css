@@ -383,6 +383,12 @@ body.tiny-layout .agent-badge {
   align-items: center;
 }
 
+.tts-hint {
+  font-size: 10px;
+  opacity: 0.6;
+  font-weight: 400;
+}
+
 .tts-radio-group {
   display: flex;
   gap: 12px;

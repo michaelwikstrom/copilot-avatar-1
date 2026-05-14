@@ -62,6 +62,7 @@ const ttsPitchInput = document.getElementById('tts-pitch-input');
 const ttsPitchValue = document.getElementById('tts-pitch-value');
 const ttsPitchRow = document.getElementById('tts-pitch-row');
 const voxtralUrlInput = document.getElementById('voxtral-url-input');
+const voxtralApikeyInput = document.getElementById('voxtral-apikey-input');
 const voxtralRefreshBtn = document.getElementById('voxtral-refresh-btn');
 const voxtralVoiceSelect = document.getElementById('voxtral-voice-select');
 const voxtralPresetSection = document.getElementById('voxtral-preset-section');
@@ -1532,6 +1533,7 @@ let ttsPitch = 1.0;
 let ttsVoiceName = null;
 let ttsEngine = 'webspeech';
 let voxtralUrl = 'http://localhost:18000';
+let voxtralApiKey = '';
 let voxtralVoice = 'casual_male';
 let voxtralVoiceSource = 'preset';
 let voxtralRefAudio = null;
@@ -1573,6 +1575,10 @@ if (savedTts.voxtralUrl) {
     voxtralUrl = savedTts.voxtralUrl;
     voxtralUrlInput.value = voxtralUrl;
 }
+if (savedTts.voxtralApiKey) {
+    voxtralApiKey = savedTts.voxtralApiKey;
+    voxtralApikeyInput.value = voxtralApiKey;
+}
 if (savedTts.voxtralVoice) {
     voxtralVoice = savedTts.voxtralVoice;
 }
@@ -1599,6 +1605,7 @@ function saveTtsSettings() {
         voice: ttsVoiceName,
         engine: ttsEngine,
         voxtralUrl,
+        voxtralApiKey,
         voxtralVoice,
         voxtralVoiceSource,
         voxtralRefAudio,
@@ -1641,7 +1648,8 @@ function populateVoxtralVoices(voiceNames) {
 
 async function fetchVoxtralVoices() {
     try {
-        const res = await fetch(`${voxtralUrl}/v1/audio/voices`);
+        const headers = voxtralApiKey ? { 'Authorization': `Bearer ${voxtralApiKey}` } : {};
+        const res = await fetch(`${voxtralUrl}/v1/audio/voices`, { headers });
         if (res.ok) {
             const data = await res.json();
             const names = Array.isArray(data) ? data : (data.voices ?? VOXTRAL_VOICES_EN);
@@ -1744,9 +1752,11 @@ async function speakVoxtral(text) {
         } else {
             body.voice = voxtralVoice;
         }
+        const reqHeaders = { 'Content-Type': 'application/json' };
+        if (voxtralApiKey) reqHeaders['Authorization'] = `Bearer ${voxtralApiKey}`;
         const res = await fetch(`${voxtralUrl}/v1/audio/speech`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: reqHeaders,
             body: JSON.stringify(body),
         });
         if (!res.ok) {
@@ -1808,6 +1818,11 @@ ttsPitchInput.addEventListener('input', () => {
 
 voxtralUrlInput.addEventListener('change', () => {
     voxtralUrl = voxtralUrlInput.value.trim();
+    saveTtsSettings();
+});
+
+voxtralApikeyInput.addEventListener('change', () => {
+    voxtralApiKey = voxtralApikeyInput.value.trim();
     saveTtsSettings();
 });
 
@@ -1873,6 +1888,7 @@ window.getTtsSettings = () => JSON.stringify({
     voice: ttsVoiceName,
     engine: ttsEngine,
     voxtralUrl,
+    voxtralApiKey,
     voxtralVoice,
     voxtralVoiceSource,
 });
