@@ -1522,11 +1522,17 @@ window.setAgentExpression = (payload = {}) => {
     setAvatarExpression(avatar, expression, durationMs);
 };
 
-const VOXTRAL_VOICES_EN = [
-    'casual_male', 'casual_female',
-    'formal_male', 'formal_female',
-    'energetic_male', 'energetic_female',
-    'calm_male', 'calm_female',
+const VOXTRAL_VOICES_FALLBACK = [
+    { slug: 'en_paul_neutral',    name: 'Paul - Neutral'    },
+    { slug: 'en_paul_happy',      name: 'Paul - Happy'      },
+    { slug: 'en_paul_confident',  name: 'Paul - Confident'  },
+    { slug: 'en_paul_cheerful',   name: 'Paul - Cheerful'   },
+    { slug: 'en_paul_excited',    name: 'Paul - Excited'    },
+    { slug: 'en_paul_sad',        name: 'Paul - Sad'        },
+    { slug: 'en_paul_frustrated', name: 'Paul - Frustrated' },
+    { slug: 'en_paul_angry',      name: 'Paul - Angry'      },
+    { slug: 'gb_oliver_neutral',  name: 'Oliver - Neutral'  },
+    { slug: 'gb_jane_sarcasm',    name: 'Jane - Sarcasm'    },
 ];
 
 let ttsEnabled = false;
@@ -1537,7 +1543,7 @@ let ttsEngine = 'webspeech';
 let voxtralBackend = 'cloud';
 let voxtralUrl = 'http://localhost:18000';
 let voxtralApiKey = '';
-let voxtralVoice = 'casual_male';
+let voxtralVoice = 'en_paul_neutral';
 let voxtralVoiceSource = 'preset';
 let voxtralRefAudio = null;
 
@@ -1626,11 +1632,7 @@ function updateBackendUI() {
     const isCloud = voxtralBackend === 'cloud';
     voxtralCloudSection.classList.toggle('hidden', !isCloud);
     voxtralLocalSection.classList.toggle('hidden', isCloud);
-    if (isCloud) {
-        populateVoxtralVoices(VOXTRAL_VOICES_EN);
-    } else {
-        fetchVoxtralVoices();
-    }
+    fetchVoxtralVoices();
 }
 
 function updateEngineUI() {
@@ -1657,38 +1659,45 @@ function populateVoices() {
     });
 }
 
-function populateVoxtralVoices(voiceNames) {
+function populateVoxtralVoices(voices) {
     voxtralVoiceSelect.innerHTML = '';
-    voiceNames.forEach((name) => {
+    voices.forEach((v) => {
+        const slug = typeof v === 'string' ? v : v.slug;
+        const label = typeof v === 'string' ? v.replace(/_/g, ' ') : v.name;
         const option = document.createElement('option');
-        option.value = name;
-        option.textContent = name.replace(/_/g, ' ');
-        option.selected = name === voxtralVoice;
+        option.value = slug;
+        option.textContent = label;
+        option.selected = slug === voxtralVoice;
         voxtralVoiceSelect.appendChild(option);
     });
 }
 
 async function fetchVoxtralVoices() {
-    if (voxtralBackend === 'cloud') {
-        populateVoxtralVoices(VOXTRAL_VOICES_EN);
-        return;
-    }
     try {
-        const headers = voxtralApiKey ? { 'Authorization': `Bearer ${voxtralApiKey}` } : {};
-        const res = await fetch(`${voxtralUrl}/v1/audio/voices`, { headers });
+        const isCloud = voxtralBackend === 'cloud';
+        const url = isCloud
+            ? 'https://api.mistral.ai/v1/audio/voices'
+            : `${voxtralUrl}/v1/audio/voices`;
+        const headers = { 'Content-Type': 'application/json' };
+        if (voxtralApiKey) headers['Authorization'] = `Bearer ${voxtralApiKey}`;
+        const res = await fetch(url, { headers });
         if (res.ok) {
             const data = await res.json();
-            const names = Array.isArray(data) ? data : (data.voices ?? VOXTRAL_VOICES_EN);
-            populateVoxtralVoices(names);
-            return;
+            // Mistral cloud: { items: [{slug, name}] }
+            // vllm-omni local: plain array or { voices: [...] }
+            const list = data.items ?? (Array.isArray(data) ? data : data.voices);
+            if (list && list.length) {
+                populateVoxtralVoices(list);
+                return;
+            }
         }
     } catch {
         // fall through to defaults
     }
-    populateVoxtralVoices(VOXTRAL_VOICES_EN);
+    populateVoxtralVoices(VOXTRAL_VOICES_FALLBACK);
 }
 
-populateVoxtralVoices(VOXTRAL_VOICES_EN);
+populateVoxtralVoices(VOXTRAL_VOICES_FALLBACK);
 speechSynthesis.onvoiceschanged = populateVoices;
 populateVoices();
 
@@ -1767,7 +1776,7 @@ async function speakVoxtral(text) {
     try {
         const isCloud = voxtralBackend === 'cloud';
         const apiUrl = isCloud ? 'https://api.mistral.ai' : voxtralUrl;
-        const model = isCloud ? 'voxtral-v0.3' : 'mistralai/Voxtral-4B-TTS-2603';
+        const model = isCloud ? 'voxtral-mini-tts-latest' : 'mistralai/Voxtral-4B-TTS-2603';
         const body = {
             input: text,
             model,
