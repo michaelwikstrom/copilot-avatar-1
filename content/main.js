@@ -64,6 +64,8 @@ const ttsPitchRow = document.getElementById('tts-pitch-row');
 const voxtralUrlInput = document.getElementById('voxtral-url-input');
 const voxtralApikeyInput = document.getElementById('voxtral-apikey-input');
 const voxtralRefreshBtn = document.getElementById('voxtral-refresh-btn');
+const voxtralCloudSection = document.getElementById('voxtral-cloud-section');
+const voxtralLocalSection = document.getElementById('voxtral-local-section');
 const voxtralVoiceSelect = document.getElementById('voxtral-voice-select');
 const voxtralPresetSection = document.getElementById('voxtral-preset-section');
 const voxtralRecordSection = document.getElementById('voxtral-record-section');
@@ -1532,6 +1534,7 @@ let ttsRate = 1.1;
 let ttsPitch = 1.0;
 let ttsVoiceName = null;
 let ttsEngine = 'webspeech';
+let voxtralBackend = 'cloud';
 let voxtralUrl = 'http://localhost:18000';
 let voxtralApiKey = '';
 let voxtralVoice = 'casual_male';
@@ -1571,6 +1574,12 @@ if (savedTts.engine) {
     ttsEngine = savedTts.engine;
     ttsEngineSelect.value = ttsEngine;
 }
+if (savedTts.voxtralBackend) {
+    voxtralBackend = savedTts.voxtralBackend;
+    document.querySelectorAll('input[name="voxtral-backend"]').forEach((r) => {
+        r.checked = r.value === voxtralBackend;
+    });
+}
 if (savedTts.voxtralUrl) {
     voxtralUrl = savedTts.voxtralUrl;
     voxtralUrlInput.value = voxtralUrl;
@@ -1604,12 +1613,24 @@ function saveTtsSettings() {
         pitch: ttsPitch,
         voice: ttsVoiceName,
         engine: ttsEngine,
+        voxtralBackend,
         voxtralUrl,
         voxtralApiKey,
         voxtralVoice,
         voxtralVoiceSource,
         voxtralRefAudio,
     }).catch(() => {});
+}
+
+function updateBackendUI() {
+    const isCloud = voxtralBackend === 'cloud';
+    voxtralCloudSection.classList.toggle('hidden', !isCloud);
+    voxtralLocalSection.classList.toggle('hidden', isCloud);
+    if (isCloud) {
+        populateVoxtralVoices(VOXTRAL_VOICES_EN);
+    } else {
+        fetchVoxtralVoices();
+    }
 }
 
 function updateEngineUI() {
@@ -1620,6 +1641,7 @@ function updateEngineUI() {
         const isMyVoice = voxtralVoiceSource === 'myvoice';
         voxtralPresetSection.classList.toggle('hidden', isMyVoice);
         voxtralRecordSection.classList.toggle('hidden', !isMyVoice);
+        updateBackendUI();
     }
 }
 
@@ -1647,6 +1669,10 @@ function populateVoxtralVoices(voiceNames) {
 }
 
 async function fetchVoxtralVoices() {
+    if (voxtralBackend === 'cloud') {
+        populateVoxtralVoices(VOXTRAL_VOICES_EN);
+        return;
+    }
     try {
         const headers = voxtralApiKey ? { 'Authorization': `Bearer ${voxtralApiKey}` } : {};
         const res = await fetch(`${voxtralUrl}/v1/audio/voices`, { headers });
@@ -1739,9 +1765,12 @@ function speakWebSpeech(text) {
 
 async function speakVoxtral(text) {
     try {
+        const isCloud = voxtralBackend === 'cloud';
+        const apiUrl = isCloud ? 'https://api.mistral.ai' : voxtralUrl;
+        const model = isCloud ? 'voxtral-v0.3' : 'mistralai/Voxtral-4B-TTS-2603';
         const body = {
             input: text,
-            model: 'mistralai/Voxtral-4B-TTS-2603',
+            model,
             response_format: 'wav',
         };
         if (voxtralVoiceSource === 'myvoice' && voxtralRefAudio) {
@@ -1754,7 +1783,7 @@ async function speakVoxtral(text) {
         }
         const reqHeaders = { 'Content-Type': 'application/json' };
         if (voxtralApiKey) reqHeaders['Authorization'] = `Bearer ${voxtralApiKey}`;
-        const res = await fetch(`${voxtralUrl}/v1/audio/speech`, {
+        const res = await fetch(`${apiUrl}/v1/audio/speech`, {
             method: 'POST',
             headers: reqHeaders,
             body: JSON.stringify(body),
@@ -1826,6 +1855,14 @@ voxtralApikeyInput.addEventListener('change', () => {
     saveTtsSettings();
 });
 
+document.querySelectorAll('input[name="voxtral-backend"]').forEach((radio) => {
+    radio.addEventListener('change', () => {
+        voxtralBackend = radio.value;
+        updateBackendUI();
+        saveTtsSettings();
+    });
+});
+
 voxtralRefreshBtn.addEventListener('click', () => fetchVoxtralVoices());
 
 voxtralVoiceSelect.addEventListener('change', () => {
@@ -1887,6 +1924,7 @@ window.getTtsSettings = () => JSON.stringify({
     pitch: ttsPitch,
     voice: ttsVoiceName,
     engine: ttsEngine,
+    voxtralBackend,
     voxtralUrl,
     voxtralApiKey,
     voxtralVoice,

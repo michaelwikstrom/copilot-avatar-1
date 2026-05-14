@@ -51,15 +51,27 @@
 
       <!-- Voxtral controls -->
       <div id="tts-voxtral-section" class="hidden">
-        <label>Server URL
-          <div class="tts-row">
-            <input id="voxtral-url-input" type="text" value="http://localhost:18000" />
-            <button id="voxtral-refresh-btn" title="Fetch voices from server">↻</button>
-          </div>
-        </label>
-        <label>API Key <span class="tts-hint">(leave blank for local)</span>
-          <input id="voxtral-apikey-input" type="password" placeholder="sk-..." autocomplete="off" />
-        </label>
+        <div class="tts-radio-group">
+          <label class="tts-radio-label">
+            <input type="radio" name="voxtral-backend" value="cloud" checked /> ☁ Mistral Cloud
+          </label>
+          <label class="tts-radio-label">
+            <input type="radio" name="voxtral-backend" value="local" /> ⚙ Local (vllm)
+          </label>
+        </div>
+        <div id="voxtral-cloud-section">
+          <label>API Key
+            <input id="voxtral-apikey-input" type="password" placeholder="sk-..." autocomplete="off" />
+          </label>
+        </div>
+        <div id="voxtral-local-section" class="hidden">
+          <label>Server URL
+            <div class="tts-row">
+              <input id="voxtral-url-input" type="text" value="http://localhost:18000" />
+              <button id="voxtral-refresh-btn" title="Fetch voices from server">↻</button>
+            </div>
+          </label>
+        </div>
         <label>Voice source
           <div class="tts-radio-group">
             <label class="tts-radio-label">
