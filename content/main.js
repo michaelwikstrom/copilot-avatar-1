@@ -1546,6 +1546,7 @@ let voxtralApiKey = '';
 let voxtralVoice = 'en_paul_neutral';
 let voxtralVoiceSource = 'preset';
 let voxtralRefAudio = null;
+let voxtralAudioPlayer = null;
 
 // Recording state
 let mediaRecorder = null;
@@ -1856,23 +1857,19 @@ async function speakVoxtral(text) {
         }
         // Mistral cloud returns { audio_data: "<base64 WAV>" }
         // vllm-omni local returns raw binary audio
-        let audioBuffer;
+        let audioSrc;
         const contentType = res.headers.get('content-type') || '';
         if (contentType.includes('application/json')) {
             const data = await res.json();
-            const binary = atob(data.audio_data);
-            const bytes = new Uint8Array(binary.length);
-            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-            audioBuffer = bytes.buffer;
+            audioSrc = `data:audio/wav;base64,${data.audio_data}`;
         } else {
-            audioBuffer = await res.arrayBuffer();
+            const buf = await res.arrayBuffer();
+            const binary = String.fromCharCode(...new Uint8Array(buf));
+            audioSrc = `data:audio/wav;base64,${btoa(binary)}`;
         }
-        const ctx = new AudioContext();
-        const decoded = await ctx.decodeAudioData(audioBuffer);
-        const source = ctx.createBufferSource();
-        source.buffer = decoded;
-        source.connect(ctx.destination);
-        source.start();
+        const audio = new Audio(audioSrc);
+        voxtralAudioPlayer = audio;
+        await audio.play();
     } catch (err) {
         console.error('Voxtral TTS failed:', err);
     }
@@ -1880,7 +1877,10 @@ async function speakVoxtral(text) {
 
 function stopAllSpeech() {
     speechSynthesis.cancel();
-    // AudioContext sources are fire-and-forget; no global stop needed
+    if (voxtralAudioPlayer) {
+        voxtralAudioPlayer.pause();
+        voxtralAudioPlayer = null;
+    }
 }
 
 // ── Event handlers ────────────────────────────────────────────────────────────
