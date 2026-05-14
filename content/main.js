@@ -1670,6 +1670,9 @@ function populateVoxtralVoices(voices) {
         option.selected = slug === voxtralVoice;
         voxtralVoiceSelect.appendChild(option);
     });
+    // Sync state var to actual selected value — saved voice may no longer be valid
+    voxtralVoice = voxtralVoiceSelect.value;
+    saveTtsSettings();
 }
 
 async function fetchVoxtralVoices() {
