@@ -1715,6 +1715,45 @@ function blobToBase64(blob) {
     });
 }
 
+/** Convert an AudioBuffer to a WAV data URL (PCM 16-bit little-endian) */
+function audioBufferToWavDataUrl(audioBuffer) {
+    const numChannels = 1; // mono
+    const sampleRate = audioBuffer.sampleRate;
+    const samples = audioBuffer.getChannelData(0);
+    const pcm = new Int16Array(samples.length);
+    for (let i = 0; i < samples.length; i++) {
+        const s = Math.max(-1, Math.min(1, samples[i]));
+        pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+    }
+    const dataLen = pcm.byteLength;
+    const buffer = new ArrayBuffer(44 + dataLen);
+    const view = new DataView(buffer);
+    const write = (off, val, len) => {
+        if (len === 4) view.setUint32(off, val, true);
+        else view.setUint16(off, val, true);
+    };
+    const writeStr = (off, str) => { for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i)); };
+    writeStr(0, 'RIFF');
+    write(4, 36 + dataLen, 4);
+    writeStr(8, 'WAVE');
+    writeStr(12, 'fmt ');
+    write(16, 16, 4);       // PCM chunk size
+    write(20, 1, 2);        // PCM format
+    write(22, numChannels, 2);
+    write(24, sampleRate, 4);
+    write(28, sampleRate * numChannels * 2, 4); // byte rate
+    write(32, numChannels * 2, 2);              // block align
+    write(34, 16, 2);       // bits per sample
+    writeStr(36, 'data');
+    write(40, dataLen, 4);
+    new Uint8Array(buffer, 44).set(new Uint8Array(pcm.buffer));
+    // Encode as base64 data URL
+    let binary = '';
+    const bytes = new Uint8Array(buffer);
+    for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+    return 'data:audio/wav;base64,' + btoa(binary);
+}
+
 async function startRecording() {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -1725,10 +1764,21 @@ async function startRecording() {
         };
         mediaRecorder.onstop = async () => {
             stream.getTracks().forEach((t) => t.stop());
-            const blob = new Blob(recordingChunks, { type: 'audio/webm' });
-            const dataUrl = await blobToBase64(blob);
-            voxtralRefAudio = dataUrl;
-            voxtralAudioPreview.src = dataUrl;
+            const webmBlob = new Blob(recordingChunks, { type: 'audio/webm' });
+            // Convert webm → WAV so Mistral ref_audio accepts it
+            try {
+                const arrayBuf = await webmBlob.arrayBuffer();
+                const ctx = new AudioContext();
+                const decoded = await ctx.decodeAudioData(arrayBuf);
+                const wavDataUrl = audioBufferToWavDataUrl(decoded);
+                voxtralRefAudio = wavDataUrl;
+                voxtralAudioPreview.src = wavDataUrl;
+            } catch {
+                // Fallback: store webm (may not work with Mistral but at least saves)
+                const dataUrl = await blobToBase64(webmBlob);
+                voxtralRefAudio = dataUrl;
+                voxtralAudioPreview.src = dataUrl;
+            }
             voxtralAudioPreview.classList.remove('hidden');
             voxtralRerecordBtn.classList.remove('hidden');
             voxtralRecordBtn.classList.add('hidden');
