@@ -1801,7 +1801,19 @@ async function speakVoxtral(text) {
             console.error('Voxtral TTS error:', res.status, await res.text());
             return;
         }
-        const audioBuffer = await res.arrayBuffer();
+        // Mistral cloud returns { audio_data: "<base64 WAV>" }
+        // vllm-omni local returns raw binary audio
+        let audioBuffer;
+        const contentType = res.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+            const data = await res.json();
+            const binary = atob(data.audio_data);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            audioBuffer = bytes.buffer;
+        } else {
+            audioBuffer = await res.arrayBuffer();
+        }
         const ctx = new AudioContext();
         const decoded = await ctx.decodeAudioData(audioBuffer);
         const source = ctx.createBufferSource();
