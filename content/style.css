@@ -367,6 +367,88 @@ body.tiny-layout .agent-badge {
   text-align: center;
 }
 
+#tts-dropdown input[type="text"] {
+  flex: 1;
+  padding: 6px 8px;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  color: #e6edf3;
+  font-size: 13px;
+}
+
+.tts-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.tts-radio-group {
+  display: flex;
+  gap: 12px;
+  padding: 4px 0;
+}
+
+.tts-radio-label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  color: #8b949e;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.tts-record-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#voxtral-refresh-btn,
+#voxtral-record-btn,
+#voxtral-stop-btn,
+#voxtral-rerecord-btn {
+  padding: 5px 10px;
+  background: #21262d;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  color: #e6edf3;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+#voxtral-refresh-btn:hover,
+#voxtral-record-btn:hover,
+#voxtral-stop-btn:hover,
+#voxtral-rerecord-btn:hover {
+  background: #30363d;
+}
+
+#voxtral-record-btn.recording {
+  border-color: #f85149;
+  color: #f85149;
+  animation: record-pulse 1.2s ease-in-out infinite;
+}
+
+#voxtral-record-timer {
+  color: #f85149;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+#voxtral-audio-preview {
+  width: 100%;
+  margin-top: 6px;
+  height: 32px;
+}
+
+@keyframes record-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
 @keyframes pulse {
   0%, 100% { opacity: 0.6; }
   50% { opacity: 1; }

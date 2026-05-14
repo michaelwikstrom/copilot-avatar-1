@@ -29,16 +29,64 @@
     <button id="tts-toggle" title="Toggle text-to-speech">🔇</button>
     <button id="tts-settings-btn" title="TTS settings">⚙️</button>
     <div id="tts-dropdown" class="hidden">
-      <label>Voice
-        <select id="tts-voice-select"></select>
+      <label>Engine
+        <select id="tts-engine-select">
+          <option value="webspeech">Web Speech</option>
+          <option value="voxtral">Voxtral (local)</option>
+        </select>
       </label>
+
+      <!-- Web Speech controls -->
+      <div id="tts-webspeech-section">
+        <label>Voice
+          <select id="tts-voice-select"></select>
+        </label>
+        <div id="tts-pitch-row">
+          <label>Pitch
+            <input id="tts-pitch-input" type="range" min="0.5" max="2" step="0.1" value="1.0" />
+            <span id="tts-pitch-value">1.0</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Voxtral controls -->
+      <div id="tts-voxtral-section" class="hidden">
+        <label>Server URL
+          <div class="tts-row">
+            <input id="voxtral-url-input" type="text" value="http://localhost:18000" />
+            <button id="voxtral-refresh-btn" title="Fetch voices from server">↻</button>
+          </div>
+        </label>
+        <label>Voice source
+          <div class="tts-radio-group">
+            <label class="tts-radio-label">
+              <input type="radio" name="voxtral-voice-source" value="preset" checked /> Preset
+            </label>
+            <label class="tts-radio-label">
+              <input type="radio" name="voxtral-voice-source" value="myvoice" /> My Voice
+            </label>
+          </div>
+        </label>
+        <div id="voxtral-preset-section">
+          <label>Voice
+            <select id="voxtral-voice-select"></select>
+          </label>
+        </div>
+        <div id="voxtral-record-section" class="hidden">
+          <div class="tts-record-controls">
+            <button id="voxtral-record-btn">🎤 Record</button>
+            <span id="voxtral-record-timer" class="hidden">0s</span>
+            <button id="voxtral-stop-btn" class="hidden">■ Stop</button>
+          </div>
+          <audio id="voxtral-audio-preview" class="hidden" controls></audio>
+          <button id="voxtral-rerecord-btn" class="hidden">Re-record</button>
+        </div>
+      </div>
+
+      <!-- Shared controls -->
       <label>Speed
         <input id="tts-rate-input" type="range" min="0.5" max="3" step="0.1" value="1.1" />
         <span id="tts-rate-value">1.1×</span>
-      </label>
-      <label>Pitch
-        <input id="tts-pitch-input" type="range" min="0.5" max="2" step="0.1" value="1.0" />
-        <span id="tts-pitch-value">1.0</span>
       </label>
     </div>
   </div>

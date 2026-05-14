@@ -16,7 +16,7 @@ async function loadSettings() {
     try {
         return JSON.parse(await readFile(settingsPath, "utf-8"));
     } catch {
-        return { enabled: false, rate: 1.1, voice: null };
+        return { enabled: false, rate: 1.1, voice: null, engine: 'webspeech', voxtralUrl: 'http://localhost:18000', voxtralVoice: 'casual_male', voxtralVoiceSource: 'preset' };
     }
 }
 

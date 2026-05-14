@@ -52,11 +52,25 @@ const emotionBubbleEl = document.getElementById('emotion-bubble');
 const ttsToggleBtn = document.getElementById('tts-toggle');
 const ttsSettingsBtn = document.getElementById('tts-settings-btn');
 const ttsDropdown = document.getElementById('tts-dropdown');
+const ttsEngineSelect = document.getElementById('tts-engine-select');
+const ttsWebspeechSection = document.getElementById('tts-webspeech-section');
+const ttsVoxtralSection = document.getElementById('tts-voxtral-section');
 const ttsVoiceSelect = document.getElementById('tts-voice-select');
 const ttsRateInput = document.getElementById('tts-rate-input');
 const ttsRateValue = document.getElementById('tts-rate-value');
 const ttsPitchInput = document.getElementById('tts-pitch-input');
 const ttsPitchValue = document.getElementById('tts-pitch-value');
+const ttsPitchRow = document.getElementById('tts-pitch-row');
+const voxtralUrlInput = document.getElementById('voxtral-url-input');
+const voxtralRefreshBtn = document.getElementById('voxtral-refresh-btn');
+const voxtralVoiceSelect = document.getElementById('voxtral-voice-select');
+const voxtralPresetSection = document.getElementById('voxtral-preset-section');
+const voxtralRecordSection = document.getElementById('voxtral-record-section');
+const voxtralRecordBtn = document.getElementById('voxtral-record-btn');
+const voxtralRecordTimer = document.getElementById('voxtral-record-timer');
+const voxtralStopBtn = document.getElementById('voxtral-stop-btn');
+const voxtralAudioPreview = document.getElementById('voxtral-audio-preview');
+const voxtralRerecordBtn = document.getElementById('voxtral-rerecord-btn');
 
 const avatars = new Map();
 const pendingSubagents = [];
@@ -1505,10 +1519,28 @@ window.setAgentExpression = (payload = {}) => {
     setAvatarExpression(avatar, expression, durationMs);
 };
 
+const VOXTRAL_VOICES_EN = [
+    'casual_male', 'casual_female',
+    'formal_male', 'formal_female',
+    'energetic_male', 'energetic_female',
+    'calm_male', 'calm_female',
+];
+
 let ttsEnabled = false;
 let ttsRate = 1.1;
 let ttsPitch = 1.0;
 let ttsVoiceName = null;
+let ttsEngine = 'webspeech';
+let voxtralUrl = 'http://localhost:18000';
+let voxtralVoice = 'casual_male';
+let voxtralVoiceSource = 'preset';
+let voxtralRefAudio = null;
+
+// Recording state
+let mediaRecorder = null;
+let recordingChunks = [];
+let recordingTimerInterval = null;
+let recordingStartTime = 0;
 
 let savedTts = {};
 try {
@@ -1533,7 +1565,31 @@ if (savedTts.voice) {
 if (savedTts.enabled) {
     ttsEnabled = true;
 }
+if (savedTts.engine) {
+    ttsEngine = savedTts.engine;
+    ttsEngineSelect.value = ttsEngine;
+}
+if (savedTts.voxtralUrl) {
+    voxtralUrl = savedTts.voxtralUrl;
+    voxtralUrlInput.value = voxtralUrl;
+}
+if (savedTts.voxtralVoice) {
+    voxtralVoice = savedTts.voxtralVoice;
+}
+if (savedTts.voxtralVoiceSource) {
+    voxtralVoiceSource = savedTts.voxtralVoiceSource;
+    document.querySelectorAll('input[name="voxtral-voice-source"]').forEach((radio) => {
+        radio.checked = radio.value === voxtralVoiceSource;
+    });
+}
+if (savedTts.voxtralRefAudio) {
+    voxtralRefAudio = savedTts.voxtralRefAudio;
+    voxtralAudioPreview.src = voxtralRefAudio;
+    voxtralAudioPreview.classList.remove('hidden');
+    voxtralRerecordBtn.classList.remove('hidden');
+}
 updateTtsButton();
+updateEngineUI();
 
 function saveTtsSettings() {
     copilot.saveSettings({
@@ -1541,7 +1597,23 @@ function saveTtsSettings() {
         rate: ttsRate,
         pitch: ttsPitch,
         voice: ttsVoiceName,
+        engine: ttsEngine,
+        voxtralUrl,
+        voxtralVoice,
+        voxtralVoiceSource,
+        voxtralRefAudio,
     }).catch(() => {});
+}
+
+function updateEngineUI() {
+    const isVoxtral = ttsEngine === 'voxtral';
+    ttsWebspeechSection.classList.toggle('hidden', isVoxtral);
+    ttsVoxtralSection.classList.toggle('hidden', !isVoxtral);
+    if (isVoxtral) {
+        const isMyVoice = voxtralVoiceSource === 'myvoice';
+        voxtralPresetSection.classList.toggle('hidden', isMyVoice);
+        voxtralRecordSection.classList.toggle('hidden', !isMyVoice);
+    }
 }
 
 function populateVoices() {
@@ -1556,18 +1628,165 @@ function populateVoices() {
     });
 }
 
+function populateVoxtralVoices(voiceNames) {
+    voxtralVoiceSelect.innerHTML = '';
+    voiceNames.forEach((name) => {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = name.replace(/_/g, ' ');
+        option.selected = name === voxtralVoice;
+        voxtralVoiceSelect.appendChild(option);
+    });
+}
+
+async function fetchVoxtralVoices() {
+    try {
+        const res = await fetch(`${voxtralUrl}/v1/audio/voices`);
+        if (res.ok) {
+            const data = await res.json();
+            const names = Array.isArray(data) ? data : (data.voices ?? VOXTRAL_VOICES_EN);
+            populateVoxtralVoices(names);
+            return;
+        }
+    } catch {
+        // fall through to defaults
+    }
+    populateVoxtralVoices(VOXTRAL_VOICES_EN);
+}
+
+populateVoxtralVoices(VOXTRAL_VOICES_EN);
 speechSynthesis.onvoiceschanged = populateVoices;
 populateVoices();
+
+// ── Recording ─────────────────────────────────────────────────────────────────
+
+function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
+}
+
+async function startRecording() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        recordingChunks = [];
+        mediaRecorder = new MediaRecorder(stream);
+        mediaRecorder.ondataavailable = (e) => {
+            if (e.data.size > 0) recordingChunks.push(e.data);
+        };
+        mediaRecorder.onstop = async () => {
+            stream.getTracks().forEach((t) => t.stop());
+            const blob = new Blob(recordingChunks, { type: 'audio/webm' });
+            const dataUrl = await blobToBase64(blob);
+            voxtralRefAudio = dataUrl;
+            voxtralAudioPreview.src = dataUrl;
+            voxtralAudioPreview.classList.remove('hidden');
+            voxtralRerecordBtn.classList.remove('hidden');
+            voxtralRecordBtn.classList.add('hidden');
+            voxtralRecordBtn.classList.remove('recording');
+            voxtralStopBtn.classList.add('hidden');
+            voxtralRecordTimer.classList.add('hidden');
+            clearInterval(recordingTimerInterval);
+            saveTtsSettings();
+        };
+        mediaRecorder.start();
+        recordingStartTime = Date.now();
+        voxtralRecordBtn.classList.add('recording');
+        voxtralRecordTimer.textContent = '0s';
+        voxtralRecordTimer.classList.remove('hidden');
+        voxtralStopBtn.classList.remove('hidden');
+        voxtralAudioPreview.classList.add('hidden');
+        voxtralRerecordBtn.classList.add('hidden');
+        recordingTimerInterval = setInterval(() => {
+            const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+            voxtralRecordTimer.textContent = `${elapsed}s`;
+        }, 500);
+    } catch (err) {
+        console.error('Microphone access denied:', err);
+    }
+}
+
+function stopRecording() {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+    }
+}
+
+// ── TTS engines ───────────────────────────────────────────────────────────────
+
+function speakWebSpeech(text) {
+    speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = ttsRate;
+    utterance.pitch = ttsPitch;
+    if (ttsVoiceName) {
+        const voice = speechSynthesis.getVoices().find((item) => item.name === ttsVoiceName);
+        if (voice) utterance.voice = voice;
+    }
+    speechSynthesis.speak(utterance);
+}
+
+async function speakVoxtral(text) {
+    try {
+        const body = {
+            input: text,
+            model: 'mistralai/Voxtral-4B-TTS-2603',
+            response_format: 'wav',
+        };
+        if (voxtralVoiceSource === 'myvoice' && voxtralRefAudio) {
+            // Strip the data URL prefix to get raw base64
+            body.ref_audio = voxtralRefAudio.includes(',')
+                ? voxtralRefAudio.split(',')[1]
+                : voxtralRefAudio;
+        } else {
+            body.voice = voxtralVoice;
+        }
+        const res = await fetch(`${voxtralUrl}/v1/audio/speech`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+            console.error('Voxtral TTS error:', res.status, await res.text());
+            return;
+        }
+        const audioBuffer = await res.arrayBuffer();
+        const ctx = new AudioContext();
+        const decoded = await ctx.decodeAudioData(audioBuffer);
+        const source = ctx.createBufferSource();
+        source.buffer = decoded;
+        source.connect(ctx.destination);
+        source.start();
+    } catch (err) {
+        console.error('Voxtral TTS failed:', err);
+    }
+}
+
+function stopAllSpeech() {
+    speechSynthesis.cancel();
+    // AudioContext sources are fire-and-forget; no global stop needed
+}
+
+// ── Event handlers ────────────────────────────────────────────────────────────
 
 ttsToggleBtn.addEventListener('click', () => {
     ttsEnabled = !ttsEnabled;
     updateTtsButton();
-    if (!ttsEnabled) speechSynthesis.cancel();
+    if (!ttsEnabled) stopAllSpeech();
     saveTtsSettings();
 });
 
 ttsSettingsBtn.addEventListener('click', () => {
     ttsDropdown.classList.toggle('hidden');
+});
+
+ttsEngineSelect.addEventListener('change', () => {
+    ttsEngine = ttsEngineSelect.value;
+    updateEngineUI();
+    saveTtsSettings();
 });
 
 ttsVoiceSelect.addEventListener('change', () => {
@@ -1587,10 +1806,40 @@ ttsPitchInput.addEventListener('input', () => {
     saveTtsSettings();
 });
 
+voxtralUrlInput.addEventListener('change', () => {
+    voxtralUrl = voxtralUrlInput.value.trim();
+    saveTtsSettings();
+});
+
+voxtralRefreshBtn.addEventListener('click', () => fetchVoxtralVoices());
+
+voxtralVoiceSelect.addEventListener('change', () => {
+    voxtralVoice = voxtralVoiceSelect.value;
+    saveTtsSettings();
+});
+
+document.querySelectorAll('input[name="voxtral-voice-source"]').forEach((radio) => {
+    radio.addEventListener('change', () => {
+        voxtralVoiceSource = radio.value;
+        updateEngineUI();
+        saveTtsSettings();
+    });
+});
+
+voxtralRecordBtn.addEventListener('click', () => startRecording());
+voxtralStopBtn.addEventListener('click', () => stopRecording());
+voxtralRerecordBtn.addEventListener('click', () => {
+    voxtralRefAudio = null;
+    voxtralAudioPreview.classList.add('hidden');
+    voxtralRerecordBtn.classList.add('hidden');
+    voxtralRecordBtn.classList.remove('hidden', 'recording');
+    saveTtsSettings();
+});
+
 window.setTts = (enabled) => {
     ttsEnabled = !!enabled;
     updateTtsButton();
-    if (!ttsEnabled) speechSynthesis.cancel();
+    if (!ttsEnabled) stopAllSpeech();
     saveTtsSettings();
     return ttsEnabled;
 };
@@ -1622,6 +1871,10 @@ window.getTtsSettings = () => JSON.stringify({
     rate: ttsRate,
     pitch: ttsPitch,
     voice: ttsVoiceName,
+    engine: ttsEngine,
+    voxtralUrl,
+    voxtralVoice,
+    voxtralVoiceSource,
 });
 
 function stripMarkdownForSpeech(text) {
@@ -1647,19 +1900,11 @@ function speak(text) {
     if (!ttsEnabled || !text) return;
     const spokenText = stripMarkdownForSpeech(text);
     if (!spokenText) return;
-    speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(spokenText);
-    utterance.rate = ttsRate;
-    utterance.pitch = ttsPitch;
-
-    if (ttsVoiceName) {
-        const voice = speechSynthesis.getVoices().find((item) => item.name === ttsVoiceName);
-        if (voice) {
-            utterance.voice = voice;
-        }
+    if (ttsEngine === 'voxtral') {
+        speakVoxtral(spokenText);
+    } else {
+        speakWebSpeech(spokenText);
     }
-
-    speechSynthesis.speak(utterance);
 }
 
 const resizeObserver = new ResizeObserver(() => {
